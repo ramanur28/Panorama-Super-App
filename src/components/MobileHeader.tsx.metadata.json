@@ -1,0 +1,5 @@
+{
+  "summary": "Sederhanakan MobileHeader dengan menghapus user-badge yang redundan karena detail user sudah ditampilkan di metric-card bagian atas dasbor tiap role.",
+  "updatedAt": "2026-09-17T11:55:05.213567Z",
+  "userFacing": true
+}
