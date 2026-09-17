@@ -1,0 +1,5 @@
+{
+  "summary": "Komponen ConfirmModal untuk konfirmasi tindakan sensitif (batal trip, hapus, reset) dan input alasan tanpa window.confirm/prompt browser.",
+  "updatedAt": "2026-09-17T12:07:59.002363500Z",
+  "userFacing": true
+}

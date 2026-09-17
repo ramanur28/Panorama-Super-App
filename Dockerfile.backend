@@ -1,0 +1,28 @@
+# =========================================================================
+# PRODUCTION BACKEND REST API RUNNER (NODE 20 ALPINE)
+# =========================================================================
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install only production dependencies (dotenv, mysql2)
+COPY package.json package-lock.json ./
+RUN npm install --omit=dev && npm cache clean --force
+
+# Copy server code and database schemas
+COPY server/ ./server/
+COPY database/ ./database/
+
+# Set production environment
+ENV NODE_ENV=production
+ENV PORT=4000
+
+# Expose backend REST API port
+EXPOSE 4000
+
+# Container healthcheck for monitoring
+HEALTHCHECK --interval=20s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:4000/api/health || exit 1
+
+# Start REST API server
+CMD ["node", "server/server.mjs"]

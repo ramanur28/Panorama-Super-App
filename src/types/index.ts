@@ -22,7 +22,7 @@ export interface ItineraryItem {
   title: string; // e.g. "Penjemputan Tamu di Hotel"
   location: string; // e.g. "Lobby Hotel Jiwa Jawa"
   description?: string; // e.g. "Briefing rute dan pengecekan jaket tebal"
-  operationalCost: number; // e.g. 120000
+  operationalCost: number; // e.g. 120000 (Sensitive: Admin Only)
   costNote?: string; // e.g. "Tiket Masuk TNBTS 4 Pax"
 }
 
@@ -42,6 +42,9 @@ export interface Worker {
   role: UserRole;
   type: WorkerType; // internal (karyawan/armada tetap) vs external (mitra/vendor lepas)
   phone: string;
+  username?: string;
+  email?: string;
+  pin?: string;
   vehicleUnit?: string; // Plat / Nomor unit (misal: "Jeep 03 - Hardtop N 1845 AB")
   avatar: string;
   baseRatePerTrip: number; // Tarif standar per trip
@@ -77,7 +80,7 @@ export interface Trip {
   agencyId: string; // ID agen travel atau "direct" (tamu mandiri)
   agencyName: string;
 
-  // Financials - Penjualan ke Tamu / Agen
+  // Financials - Penjualan ke Tamu / Agen (Admin Only)
   packagePrice: number; // Harga total paket jual
   agencyPaymentStatus: PaymentStatus; // Status pembayaran dari agen travel
 
@@ -86,21 +89,21 @@ export interface Trip {
   jeepDriverName: string;
   jeepUnit: string;
   jeepStatus: WorkerType; // internal vs external
-  jeepFee: number; // Bayaran untuk driver jeep
+  jeepFee: number; // Bayaran untuk driver jeep (Hanya bisa dilihat Driver Jeep & Admin)
   jeepPayrollStatus: PaymentStatus; // Status bayar honor driver jeep
 
   // Assignment: Driver Lapangan / Shuttle
   fieldDriverId: string;
   fieldDriverName: string;
   fieldDriverStatus: WorkerType; // internal vs external
-  fieldDriverFee: number; // Bayaran driver lapangan
+  fieldDriverFee: number; // Bayaran driver lapangan (Hanya bisa dilihat Driver Lapangan & Admin)
   fieldPayrollStatus: PaymentStatus;
 
   // Assignment: Fotografer Dokumentasi
   photographerId: string;
   photographerName: string;
   photographerStatus: WorkerType; // internal vs external
-  photographerFee: number; // Bayaran fotografer
+  photographerFee: number; // Bayaran fotografer (Hanya bisa dilihat Fotografer & Admin)
   photographerPayrollStatus: PaymentStatus;
   photoAlbumUrl?: string; // Tautan Google Drive / Cloud album
 
@@ -109,7 +112,7 @@ export interface Trip {
   itineraryTemplateName?: string;
   itinerary: ItineraryItem[];
 
-  // Operational Direct Cost (Tiket Masuk TNBTS, BBM, Parkir dll) - synced with itinerary costs
+  // Operational Direct Cost (Tiket Masuk TNBTS, BBM, Parkir dll) - STRICTLY ADMIN ONLY
   operationalCost: number;
 
   // Status & Lifecycle
@@ -167,3 +170,41 @@ export interface ProfitAndLossSummary {
   netProfit: number;
   profitMarginPercent: number;
 }
+
+// Interactive App Feedback Types
+export type ToastType = 'success' | 'info' | 'warning' | 'error';
+
+export interface ToastMessage {
+  id: string;
+  type: ToastType;
+  title: string;
+  message?: string;
+  duration?: number;
+}
+
+export interface ConfirmDialogState {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  isDestructive?: boolean;
+  requiresInput?: boolean;
+  inputPlaceholder?: string;
+  initialInputValue?: string;
+  onConfirm: (inputValue?: string) => void;
+  onCancel: () => void;
+}
+
+// Authentication & Session Types
+export interface AuthCredentials {
+  identifier: string; // phone or username or email
+  pinOrPassword?: string;
+}
+
+export interface AuthSession {
+  user: Worker;
+  token: string;
+  loginTime: string;
+}
+

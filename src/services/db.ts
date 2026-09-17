@@ -57,7 +57,17 @@ class PanoramaDatabase {
   }
 
   private init() {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+      this.trips = INITIAL_TRIPS.map((t) => ({
+        ...t,
+        itinerary: t.itinerary || [],
+        tripStatus: t.tripStatus === 'cancelled' ? 'cancelled' : calculateAutoTripStatus(t.date, t.timeSlot),
+      }));
+      this.workers = [...INITIAL_WORKERS];
+      this.agencies = [...INITIAL_AGENCIES];
+      this.templates = [...INITIAL_ITINERARY_TEMPLATES];
+      return;
+    }
 
     try {
       const storedTrips = localStorage.getItem(STORAGE_KEYS.TRIPS);
@@ -91,6 +101,7 @@ class PanoramaDatabase {
   }
 
   private persist() {
+    if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
     try {
       localStorage.setItem(STORAGE_KEYS.TRIPS, JSON.stringify(this.trips));
       localStorage.setItem(STORAGE_KEYS.WORKERS, JSON.stringify(this.workers));
@@ -113,13 +124,41 @@ class PanoramaDatabase {
     this.listeners.forEach((cb) => cb());
   }
 
-  // --- ITINERARY TEMPLATES ---
+  // --- ITINERARY TEMPLATES CRUD ---
   public getItineraryTemplates(): ItineraryTemplate[] {
     return [...this.templates];
   }
 
   public getItineraryTemplateById(id: string): ItineraryTemplate | undefined {
     return this.templates.find((t) => t.id === id);
+  }
+
+  public addItineraryTemplate(template: Omit<ItineraryTemplate, 'id'>): ItineraryTemplate {
+    const newTmpl: ItineraryTemplate = {
+      ...template,
+      id: `tmpl-${Date.now()}`,
+    };
+    this.templates.push(newTmpl);
+    this.persist();
+    return newTmpl;
+  }
+
+  public updateItineraryTemplate(id: string, updates: Partial<ItineraryTemplate>): ItineraryTemplate | undefined {
+    const idx = this.templates.findIndex((t) => t.id === id);
+    if (idx === -1) return undefined;
+    this.templates[idx] = { ...this.templates[idx], ...updates };
+    this.persist();
+    return this.templates[idx];
+  }
+
+  public deleteItineraryTemplate(id: string): boolean {
+    const initialLen = this.templates.length;
+    this.templates = this.templates.filter((t) => t.id !== id);
+    if (this.templates.length !== initialLen) {
+      this.persist();
+      return true;
+    }
+    return false;
   }
 
   // --- TRIPS CRUD & QUERIES ---
@@ -261,7 +300,7 @@ class PanoramaDatabase {
     return false;
   }
 
-  // --- WORKERS ---
+  // --- WORKERS CRUD ---
   public getWorkers(role?: UserRole): Worker[] {
     if (role) {
       return this.workers.filter((w) => w.role === role);
@@ -273,13 +312,69 @@ class PanoramaDatabase {
     return this.workers.find((w) => w.id === id);
   }
 
-  // --- AGENCIES ---
+  public addWorker(workerData: Omit<Worker, 'id'>): Worker {
+    const newWorker: Worker = {
+      ...workerData,
+      id: `w-${workerData.role}-${Date.now()}`,
+    };
+    this.workers.push(newWorker);
+    this.persist();
+    return newWorker;
+  }
+
+  public updateWorker(id: string, updates: Partial<Worker>): Worker | undefined {
+    const idx = this.workers.findIndex((w) => w.id === id);
+    if (idx === -1) return undefined;
+    this.workers[idx] = { ...this.workers[idx], ...updates };
+    this.persist();
+    return this.workers[idx];
+  }
+
+  public deleteWorker(id: string): boolean {
+    const initialLen = this.workers.length;
+    this.workers = this.workers.filter((w) => w.id !== id);
+    if (this.workers.length !== initialLen) {
+      this.persist();
+      return true;
+    }
+    return false;
+  }
+
+  // --- AGENCIES CRUD ---
   public getAgencies(): Agency[] {
     return [...this.agencies];
   }
 
   public getAgencyById(id: string): Agency | undefined {
     return this.agencies.find((a) => a.id === id);
+  }
+
+  public addAgency(agencyData: Omit<Agency, 'id'>): Agency {
+    const newAgency: Agency = {
+      ...agencyData,
+      id: `ag-${Date.now()}`,
+    };
+    this.agencies.push(newAgency);
+    this.persist();
+    return newAgency;
+  }
+
+  public updateAgency(id: string, updates: Partial<Agency>): Agency | undefined {
+    const idx = this.agencies.findIndex((a) => a.id === id);
+    if (idx === -1) return undefined;
+    this.agencies[idx] = { ...this.agencies[idx], ...updates };
+    this.persist();
+    return this.agencies[idx];
+  }
+
+  public deleteAgency(id: string): boolean {
+    const initialLen = this.agencies.length;
+    this.agencies = this.agencies.filter((a) => a.id !== id);
+    if (this.agencies.length !== initialLen) {
+      this.persist();
+      return true;
+    }
+    return false;
   }
 
   // --- BILLING / INVOICE PER AGENCY ---
@@ -501,6 +596,97 @@ class PanoramaDatabase {
     };
   }
 
+  // --- BACKUP & RESTORE DATABASE ---
+  public exportDatabaseJSON(): string {
+    const data = {
+      version: '3.0',
+      exportedAt: new Date().toISOString(),
+      trips: this.trips,
+      workers: this.workers,
+      agencies: this.agencies,
+      templates: this.templates,
+    };
+    return JSON.stringify(data, null, 2);
+  }
+
+  public importDatabaseJSON(jsonStr: string): boolean {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed.trips)) this.trips = parsed.trips;
+      if (Array.isArray(parsed.workers)) this.workers = parsed.workers;
+      if (Array.isArray(parsed.agencies)) this.agencies = parsed.agencies;
+      if (Array.isArray(parsed.templates)) this.templates = parsed.templates;
+      this.persist();
+      return true;
+    } catch (e) {
+      console.error('Import database failed:', e);
+      return false;
+    }
+  }
+
+  // --- CSV EXPORT GENERATORS ---
+  public generatePnLCSV(pnl: ProfitAndLossSummary, periodLabel: string): string {
+    const rows = [
+      ['LAPORAN LABA RUGI PANORAMA SUPER APP'],
+      ['Periode', periodLabel],
+      ['Tanggal Dibuat', new Date().toLocaleDateString('id-ID')],
+      [],
+      ['Kategori', 'Nominal (IDR)'],
+      ['Pendapatan Kotor (Omset)', pnl.grossRevenue],
+      ['Total Trip Selesai/Jalan', pnl.totalTrips],
+      ['Total Trip Dibatalkan', pnl.cancelledTripsCount || 0],
+      [],
+      ['RINCIAN BEBAN BIAYA', 'Nominal (IDR)'],
+      ['Beban Driver Jeep (Internal)', pnl.jeepCosts.internal],
+      ['Beban Driver Jeep (External)', pnl.jeepCosts.external],
+      ['Total Beban Driver Jeep', pnl.jeepCosts.total],
+      ['Beban Driver Lapangan (Internal)', pnl.fieldDriverCosts.internal],
+      ['Beban Driver Lapangan (External)', pnl.fieldDriverCosts.external],
+      ['Total Beban Driver Lapangan', pnl.fieldDriverCosts.total],
+      ['Beban Fotografer (Internal)', pnl.photographerCosts.internal],
+      ['Beban Fotografer (External)', pnl.photographerCosts.external],
+      ['Total Beban Fotografer', pnl.photographerCosts.total],
+      ['Biaya Tiket & Operasional Itinerary', pnl.operationalCosts],
+      ['TOTAL SELURUH BIAYA BEBAN', pnl.totalExpenses],
+      [],
+      ['LABA BERSIH (NET PROFIT)', pnl.netProfit],
+      ['Margin Keuntungan (%)', `${pnl.profitMarginPercent}%`],
+    ];
+
+    return rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
+  }
+
+  public generatePayrollCSV(payrolls?: WorkerPayrollSummary[]): string {
+    const list = payrolls || this.getAllWorkersPayroll();
+    const header = [
+      'Nama Kru',
+      'Peran (Role)',
+      'Tipe Kru',
+      'Total Hari Kerja',
+      'Total Trip Dijalankan',
+      'Total Honor (IDR)',
+      'Sudah Dicairkan (IDR)',
+      'Belum Dicairkan (IDR)',
+    ];
+
+    const dataRows = list.map((wp) => [
+      wp.worker.name,
+      wp.worker.role === 'driver_jeep'
+        ? 'Driver Jeep'
+        : wp.worker.role === 'driver_lapangan'
+        ? 'Driver Lapangan'
+        : 'Fotografer',
+      wp.worker.type.toUpperCase(),
+      wp.totalDaysWorked,
+      wp.totalTripsCount,
+      wp.totalEarnings,
+      wp.paidEarnings,
+      wp.pendingEarnings,
+    ]);
+
+    return [header, ...dataRows].map((r) => r.map((c) => `"${c}"`).join(',')).join('\n');
+  }
+
   // --- DEMO RESET ---
   public resetDatabase(): void {
     this.trips = INITIAL_TRIPS.map((t) => ({
@@ -516,3 +702,20 @@ class PanoramaDatabase {
 }
 
 export const db = new PanoramaDatabase();
+
+// --- WHATSAPP HELPER FUNCTIONS ---
+export function createWhatsAppUrl(phone: string, text: string): string {
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const formattedPhone = cleanPhone.startsWith('0') ? `62${cleanPhone.slice(1)}` : cleanPhone;
+  return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(text)}`;
+}
+
+export function generateGuestGreeting(trip: Trip, role: UserRole, workerName: string): string {
+  let roleTitle = 'Tim Operasional Panorama Tour';
+  if (role === 'driver_jeep') roleTitle = `Driver Jeep (${trip.jeepUnit})`;
+  else if (role === 'driver_lapangan') roleTitle = 'Driver Lapangan / Shuttle Transfer';
+  else if (role === 'photographer') roleTitle = 'Fotografer Dokumentasi';
+
+  return `Halo Bpk/Ibu ${trip.guestName}, salam dari Panorama Tour! 🌄\n\nSaya ${workerName} selaku ${roleTitle} Anda untuk perjalanan:\n📌 Paket: ${trip.tourPackage}\n📅 Tanggal: ${trip.date} (${trip.timeSlot})\n📍 Titik Penjemputan: ${trip.pickupPoint}\n👥 Jumlah: ${trip.guestCount} Orang (Pax)\n\nMohon konfirmasi kesiapan Bpk/Ibu, terima kasih banyak!`;
+}
+

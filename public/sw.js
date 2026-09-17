@@ -1,9 +1,16 @@
-// Panorama Super App - Service Worker for PWA
-const CACHE_NAME = 'panorama-cache-v1';
+// Panorama Super App - Production-Ready Service Worker for PWA
+const CACHE_NAME = 'panorama-cache-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/pwa-192x192.png',
+  '/pwa-512x512.png',
+  '/pwa-maskable-192x192.png',
+  '/pwa-maskable-512x512.png',
+  '/favicon.png',
+  '/favicon.svg',
+  '/apple-touch-icon.png'
 ];
 
 self.addEventListener('install', (event) => {
@@ -27,10 +34,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   
+  // Biarkan API requests langsung ke server network tanpa cache SW
+  if (event.request.url.includes('/api/')) return;
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Return cached, and revalidate in background
+        // Return cached response immediately, and revalidate in background
         fetch(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));

@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import type { Trip, Worker } from '../types';
-import { db } from '../services/db';
+import { db, createWhatsAppUrl, generateGuestGreeting } from '../services/db';
 import { MetricCard, formatIDR } from '../components/MetricCard';
 import { TripDetailModal } from '../components/TripDetailModal';
 import { Truck, Calendar, Clock, MapPin, Users, Wallet, Sparkles, Phone } from 'lucide-react';
 
 interface Props {
   currentUser: Worker;
+  onNotify?: (type: 'success' | 'error' | 'info', title: string, message?: string) => void;
+  onRequestConfirm?: (options: any) => void;
 }
 
-export const DriverJeepView: React.FC<Props> = ({ currentUser }) => {
+export const DriverJeepView: React.FC<Props> = ({ currentUser, onNotify, onRequestConfirm }) => {
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [payrollSummary, setPayrollSummary] = useState(db.getWorkerPayroll(currentUser.id));
@@ -206,7 +208,10 @@ export const DriverJeepView: React.FC<Props> = ({ currentUser }) => {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <a
-                    href={`https://wa.me/${trip.guestPhone.replace(/[^0-9]/g, '')}`}
+                    href={createWhatsAppUrl(
+                      trip.guestPhone,
+                      generateGuestGreeting(trip, currentUser.role, currentUser.name)
+                    )}
                     target="_blank"
                     rel="noreferrer"
                     className="btn btn-outline btn-sm"
@@ -231,6 +236,8 @@ export const DriverJeepView: React.FC<Props> = ({ currentUser }) => {
           currentUser={currentUser}
           onClose={() => setSelectedTrip(null)}
           onTripUpdated={loadData}
+          onNotify={onNotify}
+          onRequestConfirm={onRequestConfirm}
         />
       )}
     </div>

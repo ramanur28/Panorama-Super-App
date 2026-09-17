@@ -1,0 +1,5 @@
+{
+  "summary": "Skrip otomatisasi build lokal, push ke Docker Registry, dan auto-deploy ke server VPS via SSH/Docker Compose",
+  "updatedAt": "2026-09-17T16:45:53.927500200Z",
+  "userFacing": true
+}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import type { ItineraryItem, Trip, TripStatus } from '../types';
 import { formatIDR } from './MetricCard';
-import { X, PlusCircle, Check, Plus, Trash2, Compass, Pencil, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { X, PlusCircle, Check, Plus, Trash2, Compass, Pencil, AlertTriangle, ShieldAlert, AlertCircle } from 'lucide-react';
 import { db, calculateAutoTripStatus } from '../services/db';
 
 interface Props {
@@ -47,6 +47,7 @@ export const AddTripModal: React.FC<Props> = ({
   const [packagePrice, setPackagePrice] = useState(
     tripToEdit ? tripToEdit.packagePrice : (templates[0]?.defaultPrice || 1250000)
   );
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Status Selector (Khusus Mode Edit Trip)
   const [selectedStatus, setSelectedStatus] = useState<string>(
@@ -139,10 +140,60 @@ export const AddTripModal: React.FC<Props> = ({
     setItineraryItems(itineraryItems.filter((item) => item.id !== id));
   };
 
+  const validateForm = (): boolean => {
+    const errs: Record<string, string> = {};
+
+    if (!date) {
+      errs.date = 'Tanggal tour wajib diisi.';
+    }
+
+    if (!timeSlot) {
+      errs.timeSlot = 'Waktu / sesi jalan wajib dipilih.';
+    }
+
+    if (!guestName.trim()) {
+      errs.guestName = 'Nama tamu / rombongan wajib diisi.';
+    } else if (guestName.trim().length < 3) {
+      errs.guestName = 'Nama tamu minimal 3 karakter.';
+    }
+
+    const cleanPhone = guestPhone.trim().replace(/[^0-9+]/g, '');
+    if (!guestPhone.trim() || guestPhone.trim() === '0812-') {
+      errs.guestPhone = 'Nomor WhatsApp tamu wajib diisi.';
+    } else if (cleanPhone.length < 9 || cleanPhone.length > 15) {
+      errs.guestPhone = 'Nomor WhatsApp tidak valid (minimal 9-15 digit angka).';
+    }
+
+    if (!pickupPoint.trim()) {
+      errs.pickupPoint = 'Titik penjemputan tamu wajib diisi.';
+    } else if (pickupPoint.trim().length < 3) {
+      errs.pickupPoint = 'Titik penjemputan minimal 3 karakter.';
+    }
+
+    if (!guestCount || Number(guestCount) < 1) {
+      errs.guestCount = 'Jumlah pax minimal 1 orang.';
+    }
+
+    if (!packagePrice || Number(packagePrice) < 100000) {
+      errs.packagePrice = 'Harga paket jual minimal Rp 100.000.';
+    }
+
+    if (itineraryItems.length === 0) {
+      errs.itinerary = 'Trip harus memiliki minimal 1 rute stop kegiatan.';
+    } else {
+      const hasEmpty = itineraryItems.some((it) => !it.title.trim());
+      if (hasEmpty) {
+        errs.itinerary = 'Setiap rute stop kegiatan wajib memiliki nama kegiatan.';
+      }
+    }
+
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!guestName.trim()) {
-      alert('Nama tamu wajib diisi');
+    if (!validateForm()) {
       return;
     }
 
@@ -298,14 +349,20 @@ export const AddTripModal: React.FC<Props> = ({
           {/* Tanggal & Waktu */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Tanggal Tour</label>
+              <label className="form-label">
+                Tanggal Tour <span style={{ color: '#ef4444' }}>*</span>
+              </label>
               <input
                 type="date"
                 className="form-input"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  if (errors.date) setErrors({ ...errors, date: '' });
+                }}
+                style={{ borderColor: errors.date ? '#ef4444' : undefined }}
               />
+              {errors.date && <span style={{ fontSize: '10px', color: '#ef4444', marginTop: '2px', display: 'block' }}>{errors.date}</span>}
             </div>
             <div className="form-group">
               <label className="form-label">Waktu / Sesi Mulai</label>
@@ -336,52 +393,76 @@ export const AddTripModal: React.FC<Props> = ({
           {/* Tamu Info */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Nama Tamu / Rombongan</label>
+              <label className="form-label">
+                Nama Tamu / Rombongan <span style={{ color: '#ef4444' }}>*</span>
+              </label>
               <input
                 type="text"
                 className="form-input"
                 placeholder="Contoh: Bpk. Budi & Keluarga"
                 value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                required
+                onChange={(e) => {
+                  setGuestName(e.target.value);
+                  if (errors.guestName) setErrors({ ...errors, guestName: '' });
+                }}
+                style={{ borderColor: errors.guestName ? '#ef4444' : undefined }}
               />
+              {errors.guestName && <span style={{ fontSize: '10px', color: '#ef4444', marginTop: '2px', display: 'block' }}>{errors.guestName}</span>}
             </div>
             <div className="form-group">
-              <label className="form-label">Jumlah Pax</label>
+              <label className="form-label">
+                Jumlah Pax <span style={{ color: '#ef4444' }}>*</span>
+              </label>
               <input
                 type="number"
                 min="1"
                 max="25"
                 className="form-input"
                 value={guestCount}
-                onChange={(e) => setGuestCount(Number(e.target.value))}
-                required
+                onChange={(e) => {
+                  setGuestCount(Number(e.target.value));
+                  if (errors.guestCount) setErrors({ ...errors, guestCount: '' });
+                }}
+                style={{ borderColor: errors.guestCount ? '#ef4444' : undefined }}
               />
+              {errors.guestCount && <span style={{ fontSize: '10px', color: '#ef4444', marginTop: '2px', display: 'block' }}>{errors.guestCount}</span>}
             </div>
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label">Nomor Kontak WhatsApp Tamu</label>
+              <label className="form-label">
+                Nomor Kontak WhatsApp Tamu <span style={{ color: '#ef4444' }}>*</span>
+              </label>
               <input
                 type="tel"
                 className="form-input"
                 placeholder="0812-xxxx-xxxx"
                 value={guestPhone}
-                onChange={(e) => setGuestPhone(e.target.value)}
-                required
+                onChange={(e) => {
+                  setGuestPhone(e.target.value);
+                  if (errors.guestPhone) setErrors({ ...errors, guestPhone: '' });
+                }}
+                style={{ borderColor: errors.guestPhone ? '#ef4444' : undefined }}
               />
+              {errors.guestPhone && <span style={{ fontSize: '10px', color: '#ef4444', marginTop: '2px', display: 'block' }}>{errors.guestPhone}</span>}
             </div>
             <div className="form-group">
-              <label className="form-label">Titik Penjemputan</label>
+              <label className="form-label">
+                Titik Penjemputan <span style={{ color: '#ef4444' }}>*</span>
+              </label>
               <input
                 type="text"
                 className="form-input"
                 placeholder="Hotel / Villa / Stasiun"
                 value={pickupPoint}
-                onChange={(e) => setPickupPoint(e.target.value)}
-                required
+                onChange={(e) => {
+                  setPickupPoint(e.target.value);
+                  if (errors.pickupPoint) setErrors({ ...errors, pickupPoint: '' });
+                }}
+                style={{ borderColor: errors.pickupPoint ? '#ef4444' : undefined }}
               />
+              {errors.pickupPoint && <span style={{ fontSize: '10px', color: '#ef4444', marginTop: '2px', display: 'block' }}>{errors.pickupPoint}</span>}
             </div>
           </div>
 
@@ -400,6 +481,13 @@ export const AddTripModal: React.FC<Props> = ({
                 {itineraryItems.length} Kegiatan Terjadwal
               </span>
             </div>
+
+            {errors.itinerary && (
+              <div style={{ background: '#fee2e2', border: '1px solid #fecaca', color: '#dc2626', padding: '8px 12px', borderRadius: '8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                <span>{errors.itinerary}</span>
+              </div>
+            )}
 
             {/* Template Selector */}
             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -596,15 +684,21 @@ export const AddTripModal: React.FC<Props> = ({
 
           {/* Harga Jual Paket */}
           <div className="form-group">
-            <label className="form-label">Harga Paket Jual (Ke Tamu/Agen)</label>
+            <label className="form-label">
+              Harga Paket Jual (Ke Tamu/Agen) <span style={{ color: '#ef4444' }}>*</span>
+            </label>
             <input
               type="number"
               step="50000"
               className="form-input"
               value={packagePrice}
-              onChange={(e) => setPackagePrice(Number(e.target.value))}
-              required
+              onChange={(e) => {
+                setPackagePrice(Number(e.target.value));
+                if (errors.packagePrice) setErrors({ ...errors, packagePrice: '' });
+              }}
+              style={{ borderColor: errors.packagePrice ? '#ef4444' : undefined }}
             />
+            {errors.packagePrice && <span style={{ fontSize: '10px', color: '#ef4444', marginTop: '2px', display: 'block' }}>{errors.packagePrice}</span>}
           </div>
 
           {/* Real-time Profit Preview */}

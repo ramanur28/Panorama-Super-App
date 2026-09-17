@@ -1,0 +1,5 @@
+{
+  "summary": "PowerShell deployment script untuk pengguna Windows yang ingin menjalankan build lokal, push ke registry, dan SSH deploy ke VPS",
+  "updatedAt": "2026-09-17T16:46:00.147171300Z",
+  "userFacing": true
+}

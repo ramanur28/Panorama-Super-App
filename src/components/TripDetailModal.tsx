@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import type { Trip, TripStatus, Worker } from '../types';
 import { formatIDR } from './MetricCard';
-import { X, Phone, MapPin, Users, Calendar, Clock, Car, Truck, Camera, ExternalLink, Sparkles, Compass, Pencil, Ban, RotateCcw, AlertTriangle } from 'lucide-react';
-import { db } from '../services/db';
+import { X, Phone, MapPin, Users, Calendar, Clock, Car, Truck, Camera, ExternalLink, Sparkles, Compass, Pencil, Ban, RotateCcw, AlertTriangle, Copy } from 'lucide-react';
+import { db, createWhatsAppUrl, generateGuestGreeting } from '../services/db';
+import { auth } from '../services/auth';
 
 interface Props {
   trip: Trip;
@@ -10,38 +11,121 @@ interface Props {
   onClose: () => void;
   onTripUpdated: () => void;
   onEditTrip?: (trip: Trip) => void;
+  onNotify?: (type: 'success' | 'error' | 'info', title: string, message?: string) => void;
+  onRequestConfirm?: (options: {
+    title: string;
+    message: string;
+    isDestructive?: boolean;
+    requiresInput?: boolean;
+    inputPlaceholder?: string;
+    confirmLabel?: string;
+    onConfirm: (val?: string) => void;
+  }) => void;
 }
 
-export const TripDetailModal: React.FC<Props> = ({ trip, currentUser, onClose, onTripUpdated, onEditTrip }) => {
+export const TripDetailModal: React.FC<Props> = ({
+  trip,
+  currentUser,
+  onClose,
+  onTripUpdated,
+  onEditTrip,
+  onNotify,
+  onRequestConfirm,
+}) => {
   const isJeepDriver = currentUser.role === 'driver_jeep';
   const [photoUrlInput, setPhotoUrlInput] = useState(trip.photoAlbumUrl || '');
+  const [photoUrlError, setPhotoUrlError] = useState('');
   const [isSavingUrl, setIsSavingUrl] = useState(false);
   const [activeTab, setActiveTab] = useState<'details' | 'itinerary'>(isJeepDriver ? 'details' : 'itinerary');
 
+  const notify = (type: 'success' | 'error' | 'info', title: string, message?: string) => {
+    if (onNotify) {
+      onNotify(type, title, message);
+    } else {
+      alert(`${title}: ${message || ''}`);
+    }
+  };
+
   const handleSavePhotoUrl = (e: React.FormEvent) => {
     e.preventDefault();
+    setPhotoUrlError('');
+
+    const trimmed = photoUrlInput.trim();
+    if (trimmed && !/^https?:\/\/.+/i.test(trimmed)) {
+      setPhotoUrlError('Tautan harus berupa URL valid yang diawali dengan https:// atau http://');
+      notify('error', 'URL Tidak Valid', 'Format link harus diawali https:// (contoh: Google Drive atau Dropbox).');
+      return;
+    }
+
     setIsSavingUrl(true);
-    db.updatePhotoUrl(trip.id, photoUrlInput);
+    db.updatePhotoUrl(trip.id, trimmed);
     setIsSavingUrl(false);
     onTripUpdated();
-    alert('Link album foto berhasil disimpan!');
+    notify('success', 'Link Foto Disimpan', 'Tautan album Google Drive berhasil diperbarui.');
   };
 
   const handleCancelTrip = () => {
-    const reason = prompt('Masukkan alasan pembatalan trip:', 'Tamu berhalangan / reschedule');
-    if (reason !== null) {
-      db.cancelTrip(trip.id, reason);
-      onTripUpdated();
-      alert('Trip berhasil dibatalkan.');
+    if (onRequestConfirm) {
+      onRequestConfirm({
+        title: `Batalkan Trip ${trip.code}?`,
+        message: `Rencana honor untuk kru dan tagihan agen akan ditiadakan. Masukkan alasan pembatalan:`,
+        isDestructive: true,
+        requiresInput: true,
+        inputPlaceholder: 'Contoh: Tamu reschedule / cuaca buruk',
+        confirmLabel: 'Ya, Batalkan Trip Ini',
+        onConfirm: (reason) => {
+          const cleanReason = (reason || '').trim();
+          if (!cleanReason) {
+            notify('error', 'Gagal Membatalkan', 'Alasan pembatalan trip wajib diisi.');
+            return;
+          }
+          db.cancelTrip(trip.id, cleanReason);
+          onTripUpdated();
+          notify('info', 'Trip Dibatalkan', `Perjalanan ${trip.code} telah berstatus dibatalkan.`);
+        },
+      });
+    } else {
+      const reason = prompt('Masukkan alasan pembatalan trip:', 'Tamu berhalangan / reschedule');
+      if (reason !== null) {
+        const cleanReason = reason.trim();
+        if (!cleanReason) {
+          notify('error', 'Gagal Membatalkan', 'Alasan pembatalan trip tidak boleh kosong.');
+          return;
+        }
+        db.cancelTrip(trip.id, cleanReason);
+        onTripUpdated();
+        notify('info', 'Trip Dibatalkan', `Trip berhasil dibatalkan.`);
+      }
     }
   };
 
   const handleRestoreTrip = () => {
-    if (confirm('Pulihkan status trip ini ke jadwal otomatis?')) {
-      db.restoreTrip(trip.id);
-      onTripUpdated();
-      alert('Trip berhasil diaktifkan kembali!');
+    if (onRequestConfirm) {
+      onRequestConfirm({
+        title: `Pulihkan Trip ${trip.code}?`,
+        message: `Status trip akan dikembalikan ke siklus operasional otomatis dan upah kru akan aktif kembali.`,
+        isDestructive: false,
+        confirmLabel: 'Pulihkan Sekarang',
+        onConfirm: () => {
+          db.restoreTrip(trip.id);
+          onTripUpdated();
+          notify('success', 'Trip Dipulihkan', `Trip ${trip.code} kembali aktif terjadwal.`);
+        },
+      });
+    } else {
+      if (confirm('Pulihkan status trip ini ke jadwal otomatis?')) {
+        db.restoreTrip(trip.id);
+        onTripUpdated();
+        notify('success', 'Trip Dipulihkan', 'Trip berhasil diaktifkan kembali!');
+      }
     }
+  };
+
+  const handleCopyPickupInfo = () => {
+    const textToCopy = `📌 [PANORAMA TOUR JADWAL JALAN]\nKode: ${trip.code}\nTamu: ${trip.guestName} (${trip.guestCount} Pax)\nJam/Sesi: ${trip.date} - ${trip.timeSlot}\nTitik Jemput: ${trip.pickupPoint}\nKontak: ${trip.guestPhone}\nPaket: ${trip.tourPackage}`;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      notify('success', 'Info Disalin!', 'Rincian penjemputan berhasil disalin ke clipboard ponsel.');
+    }).catch(() => {});
   };
 
   const getStatusBadge = (status: TripStatus) => {
@@ -60,14 +144,14 @@ export const TripDetailModal: React.FC<Props> = ({ trip, currentUser, onClose, o
   let myFee = 0;
   let myPayrollStatus = 'unpaid';
   if (currentUser.role === 'driver_jeep') {
-    myFee = trip.jeepFee;
-    myPayrollStatus = trip.jeepPayrollStatus;
+    myFee = trip.jeepFee || 0;
+    myPayrollStatus = trip.jeepPayrollStatus || 'unpaid';
   } else if (currentUser.role === 'driver_lapangan') {
-    myFee = trip.fieldDriverFee;
-    myPayrollStatus = trip.fieldPayrollStatus;
+    myFee = trip.fieldDriverFee || 0;
+    myPayrollStatus = trip.fieldPayrollStatus || 'unpaid';
   } else if (currentUser.role === 'photographer') {
-    myFee = trip.photographerFee;
-    myPayrollStatus = trip.photographerPayrollStatus;
+    myFee = trip.photographerFee || 0;
+    myPayrollStatus = trip.photographerPayrollStatus || 'unpaid';
   }
 
   const hasItinerary = trip.itinerary && trip.itinerary.length > 0;
@@ -160,12 +244,14 @@ export const TripDetailModal: React.FC<Props> = ({ trip, currentUser, onClose, o
                   {trip.itineraryTemplateName || trip.tourPackage}
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Total Biaya Operasional:</span>
-                <div style={{ fontSize: '15px', fontWeight: 800, color: '#059669' }}>
-                  {formatIDR(trip.operationalCost)}
+              {auth.canViewOperationalCosts(currentUser.role) && (
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Total Biaya Operasional:</span>
+                  <div style={{ fontSize: '15px', fontWeight: 800, color: '#059669' }}>
+                    {formatIDR(trip.operationalCost || 0)}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Timeline of activities */}
@@ -213,18 +299,20 @@ export const TripDetailModal: React.FC<Props> = ({ trip, currentUser, onClose, o
                         </div>
                       )}
 
-                      {/* Operational cost tag for this activity */}
-                      {item.operationalCost > 0 ? (
-                        <div style={{ marginTop: '4px', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'fit-content' }}>
-                          <span style={{ color: 'var(--text-muted)' }}>Biaya Operasional:</span>
-                          <strong style={{ color: '#047857' }}>{formatIDR(item.operationalCost)}</strong>
-                          {item.costNote && <span style={{ color: 'var(--text-faint)' }}>({item.costNote})</span>}
-                        </div>
-                      ) : (
-                        <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-faint)' }}>
-                          Bebas biaya tiket/tambahan
-                        </div>
-                      )}
+                      {/* Operational cost tag for this activity - STRICTLY ADMIN ONLY */}
+                      {auth.canViewOperationalCosts(currentUser.role) ? (
+                        (item.operationalCost || 0) > 0 ? (
+                          <div style={{ marginTop: '4px', background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'fit-content' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>Biaya Operasional:</span>
+                            <strong style={{ color: '#047857' }}>{formatIDR(item.operationalCost || 0)}</strong>
+                            {item.costNote && <span style={{ color: 'var(--text-faint)' }}>({item.costNote})</span>}
+                          </div>
+                        ) : (
+                          <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-faint)' }}>
+                            Bebas biaya tiket/tambahan
+                          </div>
+                        )
+                      ) : null}
                     </div>
                   </div>
                 ))
@@ -281,20 +369,33 @@ export const TripDetailModal: React.FC<Props> = ({ trip, currentUser, onClose, o
                 <span style={{ fontSize: '13px', color: 'var(--text-main)', fontWeight: 600 }}>{trip.pickupPoint}</span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--border-glass)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--border-glass)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Phone size={14} color="var(--color-primary)" />
-                  <span style={{ fontSize: '12px' }}>{trip.guestPhone}</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600 }}>{trip.guestPhone}</span>
                 </div>
-                <a
-                  href={`https://wa.me/${trip.guestPhone.replace(/[^0-9]/g, '')}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-outline btn-sm"
-                  style={{ padding: '4px 8px', fontSize: '11px', gap: '4px' }}
-                >
-                  Hubungi Tamu
-                </a>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ padding: '4px 8px', fontSize: '11px', gap: '4px' }}
+                    onClick={handleCopyPickupInfo}
+                    title="Salin Rincian Penjemputan"
+                  >
+                    <Copy size={12} />
+                    <span>Salin Info</span>
+                  </button>
+                  <a
+                    href={createWhatsAppUrl(trip.guestPhone, generateGuestGreeting(trip, currentUser.role, currentUser.name))}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-outline btn-sm"
+                    style={{ padding: '4px 8px', fontSize: '11px', gap: '4px', color: '#059669', borderColor: '#a7f3d0' }}
+                  >
+                    <Phone size={12} color="#059669" />
+                    <span>Chat WhatsApp</span>
+                  </a>
+                </div>
               </div>
 
               {trip.notes && (
@@ -344,52 +445,69 @@ export const TripDetailModal: React.FC<Props> = ({ trip, currentUser, onClose, o
               )
             )}
 
-            {/* Crew Assignments */}
+            {/* Crew Assignments - STRICT PRIVACY: Operational workers cannot see each others fees */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>
-                TIM OPERASIONAL BERTUGAS:
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  TIM OPERASIONAL BERTUGAS:
+                </div>
+                {currentUser.role !== 'admin' && (
+                  <span style={{ fontSize: '10px', color: '#94a3b8', fontStyle: 'italic' }}>
+                    *Honor kru lain dirahasiakan
+                  </span>
+                )}
               </div>
+
+              {/* Driver Jeep */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '8px 10px', borderRadius: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Truck size={14} color="var(--color-jeep)" />
-                  <span>{trip.jeepDriverName} ({trip.jeepUnit})</span>
+                  <span>{trip.jeepDriverName || 'Belum Ditugaskan'} {trip.jeepUnit ? `(${trip.jeepUnit})` : ''}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '11px', color: trip.tripStatus === 'cancelled' ? '#dc2626' : '#059669', fontWeight: 600 }}>
-                    {trip.tripStatus === 'cancelled' ? 'Upah: Rp 0 (Batal)' : formatIDR(trip.jeepFee)}
-                  </span>
+                  {auth.canViewTeamFee('driver_jeep', currentUser.role) && (
+                    <span style={{ fontSize: '11px', color: trip.tripStatus === 'cancelled' ? '#dc2626' : '#059669', fontWeight: 600 }}>
+                      {trip.tripStatus === 'cancelled' ? 'Upah: Rp 0 (Batal)' : formatIDR(trip.jeepFee || 0)}
+                    </span>
+                  )}
                   <span className={`badge ${trip.jeepStatus === 'internal' ? 'badge-internal' : 'badge-external'}`}>
-                    {trip.jeepStatus}
+                    {trip.jeepStatus || 'standby'}
                   </span>
                 </div>
               </div>
 
+              {/* Field Driver / Shuttle */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '8px 10px', borderRadius: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Car size={14} color="var(--color-field)" />
-                  <span>{trip.fieldDriverName}</span>
+                  <span>{trip.fieldDriverName || 'Belum Ditugaskan'}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '11px', color: trip.tripStatus === 'cancelled' ? '#dc2626' : '#059669', fontWeight: 600 }}>
-                    {trip.tripStatus === 'cancelled' ? 'Upah: Rp 0 (Batal)' : formatIDR(trip.fieldDriverFee)}
-                  </span>
+                  {auth.canViewTeamFee('driver_lapangan', currentUser.role) && (
+                    <span style={{ fontSize: '11px', color: trip.tripStatus === 'cancelled' ? '#dc2626' : '#059669', fontWeight: 600 }}>
+                      {trip.tripStatus === 'cancelled' ? 'Upah: Rp 0 (Batal)' : formatIDR(trip.fieldDriverFee || 0)}
+                    </span>
+                  )}
                   <span className={`badge ${trip.fieldDriverStatus === 'internal' ? 'badge-internal' : 'badge-external'}`}>
-                    {trip.fieldDriverStatus}
+                    {trip.fieldDriverStatus || 'standby'}
                   </span>
                 </div>
               </div>
 
+              {/* Photographer */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '12px', background: '#f8fafc', border: '1px solid #e2e8f0', padding: '8px 10px', borderRadius: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Camera size={14} color="var(--color-photo)" />
-                  <span>{trip.photographerName}</span>
+                  <span>{trip.photographerName || 'Belum Ditugaskan'}</span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '11px', color: trip.tripStatus === 'cancelled' ? '#dc2626' : '#059669', fontWeight: 600 }}>
-                    {trip.tripStatus === 'cancelled' ? 'Upah: Rp 0 (Batal)' : formatIDR(trip.photographerFee)}
-                  </span>
+                  {auth.canViewTeamFee('photographer', currentUser.role) && (
+                    <span style={{ fontSize: '11px', color: trip.tripStatus === 'cancelled' ? '#dc2626' : '#059669', fontWeight: 600 }}>
+                      {trip.tripStatus === 'cancelled' ? 'Upah: Rp 0 (Batal)' : formatIDR(trip.photographerFee || 0)}
+                    </span>
+                  )}
                   <span className={`badge ${trip.photographerStatus === 'internal' ? 'badge-internal' : 'badge-external'}`}>
-                    {trip.photographerStatus}
+                    {trip.photographerStatus || 'standby'}
                   </span>
                 </div>
               </div>
@@ -402,18 +520,28 @@ export const TripDetailModal: React.FC<Props> = ({ trip, currentUser, onClose, o
                   <Camera size={14} />
                   <span>LINK DOKUMENTASI FOTO (GOOGLE DRIVE / CLOUD)</span>
                 </div>
-                <form onSubmit={handleSavePhotoUrl} style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    type="url"
-                    className="form-input"
-                    placeholder="https://drive.google.com/..."
-                    value={photoUrlInput}
-                    onChange={(e) => setPhotoUrlInput(e.target.value)}
-                    style={{ flex: 1, fontSize: '12px' }}
-                  />
-                  <button type="submit" className="btn btn-photo btn-sm" disabled={isSavingUrl}>
-                    Simpan Link
-                  </button>
+                <form onSubmit={handleSavePhotoUrl} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="url"
+                      className="form-input"
+                      placeholder="https://drive.google.com/..."
+                      value={photoUrlInput}
+                      onChange={(e) => {
+                        setPhotoUrlInput(e.target.value);
+                        if (photoUrlError) setPhotoUrlError('');
+                      }}
+                      style={{ flex: 1, fontSize: '12px', borderColor: photoUrlError ? '#ef4444' : undefined }}
+                    />
+                    <button type="submit" className="btn btn-photo btn-sm" disabled={isSavingUrl}>
+                      Simpan Link
+                    </button>
+                  </div>
+                  {photoUrlError && (
+                    <span style={{ fontSize: '11px', color: '#ef4444', display: 'block' }}>
+                      {photoUrlError}
+                    </span>
+                  )}
                 </form>
                 {trip.photoAlbumUrl && (
                   <a

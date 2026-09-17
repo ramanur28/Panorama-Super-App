@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import type { AgencyInvoice, DateFilterSelection, ProfitAndLossSummary, Trip, Worker, WorkerPayrollSummary } from '../types';
+import type { AgencyInvoice, DateFilterSelection, ProfitAndLossSummary, ToastType, Trip, Worker, WorkerPayrollSummary } from '../types';
 import { db } from '../services/db';
 import { MetricCard, formatIDR } from '../components/MetricCard';
 import { AddTripModal } from '../components/AddTripModal';
 import { TripDetailModal } from '../components/TripDetailModal';
 import { InvoiceModal } from '../components/InvoiceModal';
 import { DateRangeCalendarPicker } from '../components/DateRangeCalendarPicker';
+import { ManageMasterModal } from '../components/ManageMasterModal';
 import {
   Calendar,
   DollarSign,
@@ -25,13 +26,28 @@ import {
   Ban,
   RotateCcw,
   AlertTriangle,
+  Download,
+  Database,
 } from 'lucide-react';
 
 interface Props {
   currentUser: Worker;
+  onNotify?: (type: ToastType, title: string, message?: string) => void;
+  onRequestConfirm?: (options: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    isDestructive?: boolean;
+    requiresInput?: boolean;
+    inputPlaceholder?: string;
+    initialInputValue?: string;
+    onConfirm: (inputValue?: string) => void;
+    onCancel?: () => void;
+  }) => void;
 }
 
-export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
+export const AdminDashboardView: React.FC<Props> = ({ currentUser, onNotify, onRequestConfirm }) => {
   const [activeSubTab, setActiveSubTab] = useState<'daily' | 'pnl' | 'agencies' | 'payroll'>('daily');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -62,9 +78,56 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
 
   // Modals
   const [isAddTripOpen, setIsAddTripOpen] = useState(false);
+  const [isMasterModalOpen, setIsMasterModalOpen] = useState(false);
   const [tripToEdit, setTripToEdit] = useState<Trip | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<AgencyInvoice | null>(null);
+
+  const notify = (type: ToastType, title: string, message?: string) => {
+    if (onNotify) {
+      onNotify(type, title, message);
+    } else {
+      alert(`${title}: ${message || ''}`);
+    }
+  };
+
+  const requestConfirmDialog = (options: {
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    isDestructive?: boolean;
+    requiresInput?: boolean;
+    inputPlaceholder?: string;
+    initialInputValue?: string;
+    onConfirm: (val?: string) => void;
+  }) => {
+    if (onRequestConfirm) {
+      onRequestConfirm(options);
+    } else {
+      if (options.requiresInput) {
+        const res = prompt(`${options.title}\n${options.message}`, options.initialInputValue || '');
+        if (res !== null) options.onConfirm(res);
+      } else {
+        if (confirm(`${options.title}\n${options.message}`)) {
+          options.onConfirm();
+        }
+      }
+    }
+  };
+
+  const downloadCSV = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    notify('success', 'File CSV Diunduh', `Laporan ${filename} berhasil diunduh.`);
+  };
 
   const loadData = () => {
     const allTrips = db.getTrips();
@@ -102,13 +165,19 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
 
   const handleMarkPayrollPaid = (workerId: string, currentPending: number) => {
     if (currentPending <= 0) {
-      alert('Semua honor pekerja ini sudah lunas dicairkan.');
+      notify('info', 'Sudah Lunas', 'Semua honor pekerja ini sudah lunas dicairkan.');
       return;
     }
-    if (window.confirm('Cairkan dan tandai honor pekerja ini sudah dibayar?')) {
-      db.markWorkerPayrollPaid(workerId, true);
-      loadData();
-    }
+    requestConfirmDialog({
+      title: 'Pencairan Honor Kru',
+      message: 'Cairkan dan tandai honor pekerja ini sudah lunas dibayar?',
+      confirmLabel: 'Ya, Tandai Lunas',
+      onConfirm: () => {
+        db.markWorkerPayrollPaid(workerId, true);
+        loadData();
+        notify('success', 'Honor Dicairkan', 'Honor kru berhasil dicatat lunas.');
+      },
+    });
   };
 
   return (
@@ -148,11 +217,23 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
             </div>
           </div>
 
-          <div style={{ textAlign: 'right' }}>
-            <span className="badge badge-internal" style={{ fontSize: '11px' }}>
-              ADMIN & OWNER
-            </span>
-            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setIsMasterModalOpen(true)}
+                style={{ fontSize: '11px', padding: '4px 10px', gap: '5px', borderColor: '#bae6fd', color: '#0284c7', background: '#f0f9ff' }}
+                title="Kelola Kru, Agen Travel, Template Itinerary, dan Backup/Restore Data"
+              >
+                <Database size={13} />
+                <span>Kelola Master Data</span>
+              </button>
+              <span className="badge badge-internal" style={{ fontSize: '11px' }}>
+                ADMIN & OWNER
+              </span>
+            </div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>
               Total Operasional: <strong>{trips.length} Trip</strong>
             </div>
           </div>
@@ -393,11 +474,20 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
                           style={{ padding: '3px 8px', fontSize: '11px', gap: '4px', borderColor: '#fca5a5', color: '#dc2626' }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            const reason = prompt(`Batalkan trip ${trip.code} (${trip.guestName})?\nMasukkan alasan:`, 'Tamu berhalangan / batal');
-                            if (reason !== null) {
-                              db.cancelTrip(trip.id, reason);
-                              loadData();
-                            }
+                            requestConfirmDialog({
+                              title: `Batalkan Trip ${trip.code}`,
+                              message: `Batalkan trip tamu ${trip.guestName}? Seluruh estimasi upah kru untuk trip ini akan ditiadakan.`,
+                              requiresInput: true,
+                              inputPlaceholder: 'Tuliskan alasan pembatalan...',
+                              initialInputValue: 'Tamu berhalangan / membatalkan reservasi',
+                              confirmLabel: 'Batalkan Trip',
+                              isDestructive: true,
+                              onConfirm: (reason) => {
+                                db.cancelTrip(trip.id, reason || 'Dibatalkan oleh Admin');
+                                loadData();
+                                notify('warning', 'Trip Dibatalkan', `Trip ${trip.code} (${trip.guestName}) telah dibatalkan.`);
+                              },
+                            });
                           }}
                         >
                           <Ban size={12} />
@@ -410,10 +500,16 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
                           style={{ padding: '3px 8px', fontSize: '11px', gap: '4px', borderColor: '#0284c7', color: '#0284c7' }}
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm(`Pulihkan dan aktifkan kembali trip ${trip.code}?`)) {
-                              db.restoreTrip(trip.id);
-                              loadData();
-                            }
+                            requestConfirmDialog({
+                              title: `Pulihkan Trip ${trip.code}`,
+                              message: `Aktifkan kembali trip ${trip.code} (${trip.guestName})? Upah kru dan status operasional akan dipulihkan.`,
+                              confirmLabel: 'Pulihkan Trip',
+                              onConfirm: () => {
+                                db.restoreTrip(trip.id);
+                                loadData();
+                                notify('success', 'Trip Dipulihkan', `Trip ${trip.code} berhasil diaktifkan kembali.`);
+                              },
+                            });
                           }}
                         >
                           <RotateCcw size={12} />
@@ -442,6 +538,23 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
             title="Periode Waktu Laba Rugi"
             defaultExpanded={false}
           />
+
+          {/* Export Action Row */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => {
+                const pnlEnd = pnlDateFilter.mode === 'single' ? pnlDateFilter.startDate : pnlDateFilter.endDate;
+                const csv = db.generatePnLCSV(pnl, `${pnlDateFilter.startDate} s/d ${pnlEnd}`);
+                downloadCSV(csv, `Laporan_Laba_Rugi_${pnlDateFilter.startDate}_sd_${pnlEnd}.csv`);
+              }}
+              style={{ gap: '6px', fontSize: '11px', borderColor: '#bae6fd', color: '#0284c7', background: '#f8fafc' }}
+            >
+              <Download size={13} />
+              <span>Unduh Laporan Laba Rugi (CSV)</span>
+            </button>
+          </div>
 
           {/* Banner Informasi Trip yang Dibatalkan jika Ada */}
           {(pnl.cancelledTripsCount || 0) > 0 && (
@@ -696,7 +809,7 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
          ======================================================== */}
       {activeSubTab === 'payroll' && (
         <div className="card-section">
-          <div className="section-header">
+          <div className="section-header" style={{ flexWrap: 'wrap', gap: '10px' }}>
             <div>
               <div className="section-title">
                 <Users size={18} color="var(--color-primary)" />
@@ -706,6 +819,18 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
                 Menampilkan total hari kerja, berapa kali trip dijalankan, dan pembayaran seluruh kru.
               </div>
             </div>
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => {
+                const csv = db.generatePayrollCSV(workerPayrolls);
+                downloadCSV(csv, `Rekap_Gaji_Kru_${new Date().toISOString().slice(0, 10)}.csv`);
+              }}
+              style={{ gap: '6px', fontSize: '11px', borderColor: '#bae6fd', color: '#0284c7', background: '#f8fafc' }}
+            >
+              <Download size={13} />
+              <span>Unduh Rekap Gaji (CSV)</span>
+            </button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -809,6 +934,8 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
             setTripToEdit(trip);
             setIsAddTripOpen(true);
           }}
+          onNotify={notify}
+          onRequestConfirm={onRequestConfirm}
         />
       )}
 
@@ -817,6 +944,14 @@ export const AdminDashboardView: React.FC<Props> = ({ currentUser }) => {
           invoice={selectedInvoice}
           onClose={() => setSelectedInvoice(null)}
           onInvoiceUpdated={loadData}
+        />
+      )}
+
+      {isMasterModalOpen && (
+        <ManageMasterModal
+          onClose={() => setIsMasterModalOpen(false)}
+          onDataChanged={loadData}
+          onNotify={notify}
         />
       )}
     </div>

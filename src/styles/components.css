@@ -1,92 +1,8 @@
 /* Panorama Super App - Clean Light Design System Components */
 
-/* 1. ROLE SWITCHER BAR (PROTOTYPE DEMO BAR) */
-.role-switcher-banner {
-  background: #ffffff;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 8px 14px;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
 
-.role-switcher-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
 
-.role-switcher-label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #475569;
-}
-
-.role-pill-group {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-.role-pill-group::-webkit-scrollbar {
-  display: none;
-}
-
-.role-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: var(--radius-pill);
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid #e2e8f0;
-  background: #f1f5f9;
-  color: #475569;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-}
-
-.role-pill:hover {
-  background: #e2e8f0;
-  color: #0f172a;
-}
-
-.role-pill.active {
-  color: #ffffff;
-  border-color: transparent;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
-}
-
-.role-pill.role-jeep.active {
-  background: #ea580c;
-}
-
-.role-pill.role-field.active {
-  background: #0284c7;
-}
-
-.role-pill.role-photo.active {
-  background: #7c3aed;
-}
-
-.role-pill.role-admin.active {
-  background: #2563eb;
-}
-
-/* 2. APP HEADER */
+/* 1. APP HEADER */
 .app-header {
   background: #ffffff;
   padding: 12px 16px;
@@ -95,7 +11,7 @@
   align-items: center;
   justify-content: space-between;
   position: sticky;
-  top: 45px;
+  top: 0;
   z-index: 900;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
@@ -171,23 +87,7 @@
   text-transform: capitalize;
 }
 
-.header-reset-btn {
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
 
-.header-reset-btn:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-}
 
 /* 3. METRIC CARDS & STATS */
 .metrics-grid {
@@ -952,3 +852,137 @@
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
+
+@keyframes slideDownToast {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* 8. TOAST NOTIFICATIONS */
+.toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 3000;
+  pointer-events: none;
+  max-width: 90vw;
+  width: 360px;
+}
+
+@media (max-width: 640px) {
+  .toast-container {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+  }
+}
+
+.toast-item {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #ffffff;
+  padding: 12px 14px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+  animation: slideDownToast 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s ease;
+}
+
+.toast-success {
+  border-left: 4px solid #10b981;
+}
+
+.toast-warning {
+  border-left: 4px solid #f59e0b;
+}
+
+.toast-error {
+  border-left: 4px solid #ef4444;
+}
+
+.toast-info {
+  border-left: 4px solid #0284c7;
+}
+
+.toast-icon {
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.toast-body {
+  flex: 1;
+}
+
+.toast-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.toast-desc {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 2px;
+  line-height: 1.35;
+}
+
+.toast-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+
+.toast-close:hover {
+  color: #0f172a;
+}
+
+/* 9. PRINT STYLES FOR INVOICE */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .invoice-printable-sheet,
+  .invoice-printable-sheet * {
+    visibility: visible;
+  }
+  .invoice-printable-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .role-switcher-banner,
+  .mobile-header,
+  .app-bottom-nav,
+  .toast-container,
+  .modal-close-btn,
+  .btn {
+    display: none !important;
+  }
+}
+
